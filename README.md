@@ -4,7 +4,7 @@ A dependency-free sports betting research workspace. Requires Node.js 24.5 or ne
 
 Run `npm start` from `/workspace/sports` (default port 3000; override with `PORT`). Run `npm test` for payout math tests.
 
-Includes a filterable, explicitly illustrative odds board, two-outcome arbitrage allocation, and bonus-bet conversion with cash hedge modeling. Multi-book moneylines, spreads, and totals use The Odds API for NBA, NFL, and MLB. Player props remain demo-only. No automated wagers, accounts, or persisted bankroll data are connected. Calculators assume exhaustive outcomes and matching settlement rules; fees, voids, pushes, stake rounding, and promo restrictions require independent verification.
+Includes a filterable, explicitly illustrative odds board, two-outcome arbitrage allocation, and bonus-bet conversion with cash hedge modeling. Multi-book moneylines, spreads, and totals use The Odds API for NBA, NFL, and MLB. Player props load on demand through the event-level API. No automated wagers, accounts, or persisted bankroll data are connected. Calculators assume exhaustive outcomes and matching settlement rules; fees, voids, pushes, stake rounding, and promo restrictions require independent verification.
 
 ## Live odds setup
 
@@ -12,7 +12,7 @@ Create an account at https://the-odds-api.com/ and obtain a key with the require
 
 The board starts in live mode; choose one sport and refresh manually. Each sport request includes moneylines, spreads, and totals; provider quota costs depend on your plan. Server responses are cached for 60 seconds and concurrent requests are combined. No background polling occurs. Provider market timestamps are shown and prices older than five minutes are marked stale. The fetched timestamp is not a guarantee of price freshness or availability at the sportsbook. Demo mode must be selected explicitly; live failures never substitute demo data.
 
-`GET /api/odds?sport=NBA` (also NFL and MLB) returns normalized sportsbook rows or a sanitized error. No key returns 503. Missing seasonal coverage may return an empty array. Player props require a separate event-level endpoint and are not integrated yet. API tests use synthetic provider fixtures; authenticated provider access must be verified after the key and network settings are applied.
+`GET /api/odds?sport=NBA` (also NFL and MLB) returns normalized sportsbook rows or a sanitized error. No key returns 503. Missing seasonal coverage may return an empty array. Player props use the separate on-demand event-level endpoint described below. API tests use synthetic provider fixtures; authenticated provider access must be verified after the key and network settings are applied.
 
 True value estimates require a calibrated probability model or justified market reference; implied probability alone is not an edge.
 
@@ -22,7 +22,7 @@ See [DEPLOY.md](DEPLOY.md) for the Render Blueprint, private sign-in, and deploy
 
 ## Oregon and the compact board
 
-The board combines each team's moneyline and spread on one row per event and sportsbook. Alternate spread lines are retained; totals and props stay separate. Oregon mode is the default and currently enables only DraftKings, confirmed on the Oregon Lottery sports page on October 29, 2026: https://www.oregonlottery.org/sports/. This is coverage verification, not an exhaustive legal review. Other supplied sportsbook prices remain visible in explicit reference mode and are not represented as executable from Oregon.
+The board combines both teams' moneylines and spreads on one row per game and sportsbook. Alternate spread lines are retained; totals and props stay separate. Oregon mode is the default and currently enables only DraftKings, confirmed on the Oregon Lottery sports page on October 29, 2026: https://www.oregonlottery.org/sports/. This is coverage verification, not an exhaustive legal review. Other supplied sportsbook prices remain visible in explicit reference mode and are not represented as executable from Oregon.
 
 The Oregon platforms tab tracks Underdog, Betr and PrizePicks as unverified product-specific eligibility, not connected live feeds. Their help pages could not be verified during this change. A manual pick’em watchlist records user-confirmed eligible selections in browser localStorage (maximum 100). It does not calculate arbitrage from pick’em selections, store account credentials, or invent prices. Check exact product, state eligibility, payouts, void rules and entry terms directly in your account. This directory is a starting point; it does not claim to enumerate every Oregon retail, tribal or fantasy offering.
 
@@ -46,7 +46,7 @@ Ask AI supports Google AI Studio's Gemini API and the OpenAI Responses API. It r
 
 Each explicit question sends your question (maximum 2500 characters) and up to 80 fresh pregame DraftKings quotes for the selected sport to the selected provider. No chat history, other-book reference data, watchlist or account credentials are sent. For OpenAI, API storage is requested off (`store:false`). Gemini uses its native generateContent endpoint with header authentication. Each provider’s retention and data-use policies apply. No request is made automatically, and empty eligible snapshots skip the model call. A global 15-second cooldown and one in-flight request bound accidental usage; there is no persistent dollar-budget enforcement in the app.
 
-The server validates structured output against supplied quote IDs, rejects unsupported legs, expired prices and same-event parlays, and computes illustrative parlay payouts itself. Multiplying leg prices does not establish an offered DraftKings parlay price or account for correlation, voids or limits. Break-even probability is price-derived, not a prediction. No injury data, true-probability model or live player props are connected; the assistant cannot establish positive EV or guarantee profitable bets. Model reasoning is unverified research commentary. Prices must be checked again in the operator's app.
+The server validates structured output against supplied quote IDs, rejects unsupported legs, expired prices and same-event parlays, and computes illustrative parlay payouts itself. Multiplying leg prices does not establish an offered DraftKings parlay price or account for correlation, voids or limits. Break-even probability is price-derived, not a prediction. No injury data or true-probability model is connected; live props enter AI context only when explicitly selected; the assistant cannot establish positive EV or guarantee profitable bets. Model reasoning is unverified research commentary. Prices must be checked again in the operator's app.
 
 `POST /api/ask` accepts JSON with `message` and `sport` (NBA/NFL/MLB). Missing AI credentials return 503, invalid inputs 400, and cooldown/provider rate limits 429. Tests use mocked AI responses and synthetic odds. Authenticated provider access has not been verified without a configured API key. Server errors never return raw provider payloads or credential-bearing request errors.
 
@@ -59,3 +59,13 @@ Gemini HTTP 404 for the old hardcoded default is addressed by automatic model di
 ### Persistent Gemini 503
 
 Use Ask AI → Check connection / load models. This only reads the model catalog; it does not request an answer or test generation quotas. Errors identify Model discovery versus Answer generation (model name). If discovery succeeds and generation fails, choose another catalog-listed Flash model in the Gemini model selector (Flash Lite if available) and submit manually. This may incur normal generation charges. No automated retries or hidden fallback generations are performed. An explicitly selected UI model must be in the authenticated catalog; unknown models are rejected before generation. Persistent failures across listed models require checking the Google project/provider, not repeated application retries.
+
+## Live player props and game rows
+
+The default game view groups BOTH teams into a single table row per event/book, with aligned moneyline/spread prices, totals, and a View props action. Exact-line multi-book comparison remains available. Player props have their own compact table, pairing Over and Under for each player/line.
+
+From the live board choose a sport, then View props on a game (or open Player props). Select an upcoming event and one market, then Load player props. Supported configured markets: NBA points/rebounds/assists/threes; NFL passing/rushing/receiving yards/receptions; MLB hits/total bases/pitcher strikeouts. Actual coverage and release times vary by event and subscription. This is an on-demand integration, not a claim that every market is offered.
+
+`GET /api/props?sport=NBA&event=<provider-event-id>&market=player_points` uses the existing ODDS_API_KEY and DraftKings-only event odds endpoint. Events must be upcoming and present in the current board snapshot. Requests are cached/coalesced for 60 seconds with a bounded 50-entry prop cache. One market/event is loaded at a time to control provider credits. Props are not polled in the background. Live NBA player-points retrieval was verified during development with 20 returned quotes. NFL/MLB prop mappings are configured but were not authenticated end-to-end checked in this change.
+
+To include props in Ask AI, load a market, choose the matching AI sport, and check Include loaded prop event / market. The server retrieves/revalidates those quotes itself; an expired cache may consume credits. AI IDs retain player/stat/side/line identity. Same-event parlays remain unsupported; no fabricated correlated parlay prices or injury/lineup claims are introduced.

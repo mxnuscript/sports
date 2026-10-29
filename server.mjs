@@ -24,10 +24,10 @@ http.createServer(async(req,res)=>{
     if(!req.headers['content-type']?.startsWith('application/json')){res.writeHead(415);return res.end(JSON.stringify({error:'JSON required.'}));}
     try{let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>12000){res.writeHead(413);return res.end(JSON.stringify({error:'Question too large.'}));}}let body;try{body=JSON.parse(raw);}catch{res.writeHead(400);return res.end(JSON.stringify({error:'Invalid JSON.'}));}res.end(JSON.stringify(await (url.pathname==='/api/ai-check'?assistant.check():assistant(body))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'AI request failed.'}));}return;
   }
-  if(url.pathname==='/api/odds'){
+  if(url.pathname==='/api/odds'||url.pathname==='/api/props'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
     if(req.method!=='GET'){res.writeHead(405);return res.end(JSON.stringify({error:'GET required.'}));}
-    try{res.end(JSON.stringify(await odds(url.searchParams.get('sport')||'NBA')));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'Odds feed unavailable.'}));}return;
+    try{res.end(JSON.stringify(await (url.pathname==='/api/props'?odds.props(url.searchParams.get('sport'),url.searchParams.get('event'),url.searchParams.get('market')):odds(url.searchParams.get('sport')||'NBA'))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'Odds feed unavailable.'}));}return;
   }
   const file=files[url.pathname];if(!file){res.writeHead(404);return res.end('Not found');}try{const body=await readFile(new URL('./public/'+file,import.meta.url));res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(body);}catch{res.writeHead(500);res.end('Unable to load application');}
 }).listen(Number(process.env.PORT)||3000,'0.0.0.0');

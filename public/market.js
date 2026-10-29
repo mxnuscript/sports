@@ -1,8 +1,8 @@
 import {decimal,arb} from './math.js';
-export const quoteKey=r=>JSON.stringify([r.eventId||r.event,r.bookKey,r.market,r.selection,r.line]);
+export const quoteKey=r=>JSON.stringify([r.eventId||r.event,r.bookKey,r.marketKey||r.market,r.selection,r.line]);
 export function matrix(rows,now=Date.now(),requireFresh=false){
  const groups=new Map();
- for(const r of rows){const key=JSON.stringify([r.eventId||r.event,r.market,r.selection,r.line]);if(!groups.has(key))groups.set(key,{...r,quotes:[]});groups.get(key).quotes.push(r);}
+ for(const r of rows){const key=JSON.stringify([r.eventId||r.event,r.marketKey||r.market,r.selection,r.line]);if(!groups.has(key))groups.set(key,{...r,quotes:[]});groups.get(key).quotes.push(r);}
  return [...groups.values()].map(r=>({...r,best:Math.max(...r.quotes.filter(q=>!requireFresh||(now-Date.parse(q.updatedAt)>=-60000&&now-Date.parse(q.updatedAt)<=300000)).map(q=>decimal(q.odds)))}));
 }
 export function roundedAllocation(a,b,bank){
