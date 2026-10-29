@@ -3,7 +3,7 @@ export const quoteKey=r=>JSON.stringify([r.eventId||r.event,r.bookKey,r.marketKe
 export function matrix(rows,now=Date.now(),requireFresh=false){
  const groups=new Map();
  for(const r of rows){const key=JSON.stringify([r.eventId||r.event,r.marketKey||r.market,r.selection,r.line]);if(!groups.has(key))groups.set(key,{...r,quotes:[]});groups.get(key).quotes.push(r);}
- return [...groups.values()].map(r=>({...r,best:Math.max(...r.quotes.filter(q=>!requireFresh||(now-Date.parse(q.updatedAt)>=-60000&&now-Date.parse(q.updatedAt)<=300000)).map(q=>decimal(q.odds)))}));
+ return [...groups.values()].map(r=>({...r,best:Math.max(...r.quotes.filter(q=>(!q.indicative&&(!q.productType||q.productType==='sportsbook'))&&(!requireFresh||(now-Date.parse(q.updatedAt)>=-60000&&now-Date.parse(q.updatedAt)<=300000))).map(q=>decimal(q.odds)))}));
 }
 export function roundedAllocation(a,b,bank){
  const total=Math.round(Number(bank)*100)/100,allocation=arb(a,b,total),first=Math.round(allocation.first*100)/100,second=Math.round((total-first)*100)/100;

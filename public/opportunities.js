@@ -1,7 +1,7 @@
 import {arb} from './math.js';
 // Candidates require independent verification of settlement rules and availability.
 export function opportunities(rows,now=Date.now()){
-  const fresh=rows.filter(r=>r.eventId&&r.outcomeCount===2&&Number.isFinite(r.odds)&&Math.abs(r.odds)>=100&&Number.isFinite(Date.parse(r.updatedAt))&&now-Date.parse(r.updatedAt)>=-60000&&now-Date.parse(r.updatedAt)<=300000&&Date.parse(r.start)>now);
+  const fresh=rows.filter(r=>!r.indicative&&(!r.productType||r.productType==='sportsbook')&&r.eventId&&r.outcomeCount===2&&Number.isFinite(r.odds)&&Math.abs(r.odds)>=100&&Number.isFinite(Date.parse(r.updatedAt))&&now-Date.parse(r.updatedAt)>=-60000&&now-Date.parse(r.updatedAt)<=300000&&Date.parse(r.start)>now);
   const groups=new Map();
   for(const r of fresh){const key=JSON.stringify([r.eventId,r.market]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(r);}
   const result=[];

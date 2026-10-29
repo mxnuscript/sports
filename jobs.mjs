@@ -6,7 +6,7 @@ export function createJobs(run,{now=Date.now}={}){
   start(body){
    if(!body||typeof body.sport!=='string')throw new FeedError('Choose a sport for research.',400);
    for(const [id,job] of jobs)if(now()-job.created>600000&&job.state!=='running')jobs.delete(id);
-   const key=JSON.stringify([body.sport,body.eventId||'',body.propEvent||'',body.propMarket||'']);
+   const key=JSON.stringify([body.sport,body.eventId||'',body.propEvent||'',body.propMarket||'',body.propBook||'draftkings']);
    for(const job of jobs.values())if(job.state==='running'&&job.key===key)return {id:job.id};
    if([...jobs.values()].filter(j=>j.state==='running').length>=2)throw new FeedError('Research is already running. Wait for a current job to finish.',429);
    while(jobs.size>=12){const done=[...jobs.values()].find(j=>j.state!=='running');if(!done)break;jobs.delete(done.id);}

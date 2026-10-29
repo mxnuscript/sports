@@ -2,7 +2,7 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {createFeed,SPORTS,FeedError} from './odds.mjs';
 import {createHash,timingSafeEqual} from 'node:crypto';
-import {createAssistant,eligibleQuotes} from './ai.mjs';
+import {createAssistant,eligibleQuotes,comparisonQuotes} from './ai.mjs';
 import {createResearch} from './research.mjs';
 import {createJobs} from './jobs.mjs';
 const odds=createFeed();
@@ -11,8 +11,8 @@ const assistant=createAssistant({odds,research});
 const matchupResearch=async(body,onProgress)=>{
  if(!body||!Object.hasOwn(SPORTS,body.sport))throw new FeedError('Choose NBA, NFL or MLB.',400);
  const snapshot=await odds(body.sport);let rows=snapshot.rows;
- if(body.propEvent){const props=await odds.props(body.sport,body.propEvent,body.propMarket);rows=[...props.rows,...rows];}
- const quotes=eligibleQuotes(rows);
+ if(body.propEvent){const props=await odds.props(body.sport,body.propEvent,body.propMarket,body.propBook||'draftkings');rows=[...props.rows,...rows];}
+ const quotes=[...eligibleQuotes(rows),...comparisonQuotes(rows)];
  if(body.eventId&&!quotes.some(q=>q.eventId===body.eventId))throw new FeedError('Choose a game from the current live snapshot.',400);
  return research({sport:body.sport,quotes,eventId:body.eventId,onProgress});
 };
@@ -40,10 +40,10 @@ http.createServer(async(req,res)=>{
     if(!req.headers['content-type']?.startsWith('application/json')){res.writeHead(415);return res.end(JSON.stringify({error:'JSON required.'}));}
     try{let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>12000){res.writeHead(413);return res.end(JSON.stringify({error:'Question too large.'}));}}let body;try{body=JSON.parse(raw);}catch{res.writeHead(400);return res.end(JSON.stringify({error:'Invalid JSON.'}));}res.end(JSON.stringify(await (url.pathname==='/api/ai-check'?assistant.check():url.pathname==='/api/research'?matchupResearch(body):url.pathname==='/api/research/start'?researchJobs.start(body):assistant(body))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'AI request failed.'}));}return;
   }
-  if(url.pathname==='/api/odds'||url.pathname==='/api/props'||url.pathname==='/api/alternates'){
+  if(url.pathname==='/api/odds'||url.pathname==='/api/props'||url.pathname==='/api/alternates'||url.pathname==='/api/book'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
     if(req.method!=='GET'){res.writeHead(405);return res.end(JSON.stringify({error:'GET required.'}));}
-    try{res.end(JSON.stringify(await (url.pathname==='/api/alternates'?odds.alternates(url.searchParams.get('sport'),url.searchParams.get('event')):url.pathname==='/api/props'?odds.props(url.searchParams.get('sport'),url.searchParams.get('event'),url.searchParams.get('market')):odds(url.searchParams.get('sport')||'NBA'))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'Odds feed unavailable.'}));}return;
+    try{res.end(JSON.stringify(await (url.pathname==='/api/book'?odds.book(url.searchParams.get('sport'),url.searchParams.get('book')):url.pathname==='/api/alternates'?odds.alternates(url.searchParams.get('sport'),url.searchParams.get('event')):url.pathname==='/api/props'?odds.props(url.searchParams.get('sport'),url.searchParams.get('event'),url.searchParams.get('market'),url.searchParams.get('book')||'draftkings'):odds(url.searchParams.get('sport')||'NBA'))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'Odds feed unavailable.'}));}return;
   }
   const file=files[url.pathname];if(!file){res.writeHead(404);return res.end('Not found');}try{const body=await readFile(new URL('./public/'+file,import.meta.url));res.setHeader('Content-Type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(body);}catch{res.writeHead(500);res.end('Unable to load application');}
 }).listen(Number(process.env.PORT)||3000,'0.0.0.0');
