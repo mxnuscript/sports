@@ -1,0 +1,13 @@
+{
+  "name": "sports-edge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "node --use-env-proxy server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=24.5"
+  },
+  "type": "module"
+}

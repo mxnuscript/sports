@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: sports-edge
+    runtime: node
+    buildCommand: npm test
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.0
+      - key: NODE_ENV
+        value: production
+      - key: ODDS_API_KEY
+        sync: false
+      - key: EDGE_USER
+        sync: false
+      - key: EDGE_PASSWORD
+        sync: false

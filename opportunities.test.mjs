@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {opportunities} from './public/opportunities.js';
+const now=Date.parse('2030-01-01T00:00:00Z');
+const base={eventId:'one',event:'A vs B',start:'2030-01-02T00:00:00Z',updatedAt:new Date(now).toISOString(),market:'Moneyline',outcomeCount:2,line:'—',odds:110};
+const a={...base,bookKey:'draftkings',selection:'A'},b={...base,bookKey:'fanduel',selection:'B'};
+test('finds a DraftKings opposing two-way candidate and balanced allocations',()=>{const [r]=opportunities([a,b],now);assert.ok(r.profit>0);assert.ok(Math.abs(r.first+r.second-100)<1e-8);});
+test('excludes stale, started, three-way, unrelated events, missing dates and same book',()=>{for(const change of [{updatedAt:new Date(now-300001).toISOString()},{start:new Date(now-1).toISOString()},{outcomeCount:3},{eventId:'two'},{updatedAt:null},{bookKey:'draftkings'},{selection:'A'}])assert.equal(opportunities([a,{...b,...change}],now).length,0);});
+test('requires opposite half-point spreads and matching half-point totals',()=>{const spread=[{...a,market:'Spread',line:-3.5},{...b,market:'Spread',line:3.5}];assert.equal(opportunities(spread,now).length,1);assert.equal(opportunities([spread[0],{...spread[1],line:4.5}],now).length,0);assert.equal(opportunities(spread.map(r=>({...r,line:r.line>0?3:-3})),now).length,0);const total=[{...a,market:'Total',selection:'Over',line:221.5},{...b,market:'Total',selection:'Under',line:221.5}];assert.equal(opportunities(total,now).length,1);assert.equal(opportunities([total[0],{...total[1],line:222.5}],now).length,0);});
+test('rejects prices that are too far apart and negative-return pairs',()=>{assert.equal(opportunities([a,{...b,updatedAt:new Date(now-61000).toISOString()}],now).length,0);assert.equal(opportunities([{...a,odds:-110},{...b,odds:-110}],now).length,0);});
