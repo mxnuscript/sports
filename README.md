@@ -29,3 +29,13 @@ The Oregon platforms tab tracks Underdog, Betr and PrizePicks as unverified prod
 ### Windows quick start / update
 
 Download the latest ZIP for `edge/live-odds-workspace` and extract it to a new folder. Stop the old app with Ctrl+C. Double-click `start-windows.cmd` in the folder containing package.json, enter your Odds API key when prompted, and open http://localhost:3000. Requires Node 24.5 or newer. The launcher keeps the key only in the process environment and avoids PowerShell's npm.ps1 execution-policy issue. It does not change execution policy or install dependencies. Existing browser watchlist notes remain on the same localhost port/browser. To update, download/extract the new ZIP; changes pushed to GitHub do not update an existing ZIP extraction automatically.
+
+## Comparison tools
+
+Switch between the compact team view and Compare books. Comparison columns group identical event, selection, market and line; different spreads/totals are never treated as the same price. Best shown excludes quotes older than five minutes or with unknown timestamps in provider mode, and means only best among displayed prices. It does not imply positive EV or Oregon access. Click any quote to inspect its timestamp and transfer odds into a calculator.
+
+Pregame filtering is on by default, with start-time/name sorting and CSV export of filtered quotes. CSV formula-leading fields are escaped. Odds movement indicators compare the last loaded provider snapshot; there is no historical price database. Auto-refresh is off by default, configurable at 60/120/300 seconds, pauses in hidden tabs, and consumes provider credits after cache expiry. Quotes still use the server's 60-second cache; this is not a real-time streaming feed.
+
+The arbitrage reference table supports total stake, minimum return and market filters. Stakes are rounded to cents and the lower of the two modeled settlement profits is reported. Actual minimum stakes, limits, fees, voids and settlement still need verification. Oregon mode continues to suppress cross-book actionable candidates because only DraftKings coverage is confirmed.
+
+Design references: AVO's public odds-screen page (https://www.avo.bet/product/odds) informed side-by-side comparisons, search and market navigation. OddsJam's supplied arbitrage page could not be inspected because it returned HTTP 403. No proprietary assets, pricing feed or real-time claims are copied from these products.
