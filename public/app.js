@@ -102,7 +102,7 @@ document.getElementById('askform').addEventListener('submit',async event=>{
  event.preventDefault();const button=document.getElementById('askbutton'),status=document.getElementById('aistatus'),answer=document.getElementById('aianswer');
  button.disabled=true;answer.replaceChildren();status.textContent='Checking fresh Oregon-eligible quotes and asking AI…';
  try{
-  const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:document.getElementById('aiquestion').value,sport:document.getElementById('aisport').value}),signal:AbortSignal.timeout(65000)}),body=await response.json();
+  const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:document.getElementById('aiquestion').value,sport:document.getElementById('aisport').value}),signal:AbortSignal.timeout(80000)}),body=await response.json();
   if(!response.ok)throw Error(body.error||'AI request failed.');
   status.textContent=body.model?'AI research generated '+new Date(body.analyzedAt).toLocaleString()+' · '+body.quoteCount+' quotes considered · '+body.model:'No AI request made.';
   const quote=r=>`<strong>${escape(r.selection)} · ${escape(r.market)} ${escape(r.line)}</strong><p>${escape(r.event)} · DraftKings · ${r.odds>0?'+':''}${r.odds}</p><small>Break-even ${pct(r.breakEven)} · updated ${escape(new Date(r.updatedAt).toLocaleString())}</small>`;
