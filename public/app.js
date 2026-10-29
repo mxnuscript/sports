@@ -1,3 +1,6 @@
+import {propComparison} from './prop-tools.js';
+import {setupPickem,notePickemQuote} from './pickem.js';
+import {setupWorkspace,restoreSelect} from './workspace.js';
 import {addToSlip,setupSlip} from './slip.js';
 import {researchHTML,setupResearch,setResearchEvents,previewResearch} from './research-ui.js';
 import {matrix,quoteKey,roundedAllocation,csv} from './market.js';
@@ -6,7 +9,7 @@ import {platforms} from './platforms.js';
 import {opportunities} from './opportunities.js';
 import {decimal,arb,bonus} from './math.js';
 const demoData=[['NBA','Boston vs New York','Moneyline','Boston','—',-145],['NBA','Boston vs New York','Moneyline','New York','—',125],['NBA','Boston vs New York','Spread','Boston','−3.5',-110],['NBA','Boston vs New York','Total','Over','221.5',-110],['NBA','Boston vs New York','Player prop','Jayson Tatum · points over','27.5',-115],['NFL','Kansas City vs Buffalo','Moneyline','Kansas City','—',115],['NFL','Kansas City vs Buffalo','Moneyline','Buffalo','—',-135],['NFL','Kansas City vs Buffalo','Spread','Kansas City','+2.5',-110],['NFL','Kansas City vs Buffalo','Total','Under','48.5',-105],['NFL','Kansas City vs Buffalo','Player prop','Josh Allen · passing yards over','249.5',-115],['MLB','Los Angeles vs San Diego','Moneyline','Los Angeles','—',-160],['MLB','Los Angeles vs San Diego','Moneyline','San Diego','—',140]];
-let data=[], live=true, requestId=0, liveRows=[], view='compact', shownRows=[], selectedQuote=null, quoteLookup=[], previousQuotes=new Map(), moves=new Map(), loading=false, refreshTimer=null, propRows=[], propContext=null, propRequestId=0, selectedLines=new Map(), aiQuoteRegistry=[];
+let data=[], live=true, requestId=0, liveRows=[], view='compact', shownRows=[], selectedQuote=null, quoteLookup=[], previousQuotes=new Map(), moves=new Map(), loading=false, refreshTimer=null, propRows=[], propContext=null, propRequestId=0, selectedLines=new Map(), aiQuoteRegistry=[], propView='list', propCoverage=new Map();
 const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>n.toLocaleString('en-US',{style:'currency',currency:'USD'}),pct=n=>(n*100).toFixed(2)+'%';
 function price(r,withLine=false){
@@ -67,7 +70,6 @@ async function loadOdds(){
   }catch(error){if(id!==requestId)return;status.textContent='● Feed unavailable';notice.textContent=error.name==='TimeoutError'?'Odds request timed out. Try refreshing.':error.message;data=[];render();}
   finally{if(id===requestId){refresh.disabled=false;loading=false;}}
 }
-loadOdds();
 
 function renderCandidates(){
  const container=document.getElementById('candidates');
@@ -119,7 +121,7 @@ document.getElementById('askform').addEventListener('submit',async event=>{
 
 document.getElementById('aicheck').addEventListener('click',async()=>{
  const button=document.getElementById('aicheck'),status=document.getElementById('aicheckstatus'),select=document.getElementById('aimodel');button.disabled=true;status.textContent='Checking model discovery only…';
- try{const response=await fetch('/api/ai-check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(15000)}),body=await response.json();if(!response.ok)throw Error(body.error||'Connection check failed.');select.replaceChildren();const auto=document.createElement('option');auto.value='';auto.textContent='Automatic'+(body.selected?' ('+body.selected+')':'');select.append(auto);for(const model of body.models){const option=document.createElement('option');option.value=model;option.textContent=model;select.append(option);}status.textContent=body.message;}
+ try{const response=await fetch('/api/ai-check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(15000)}),body=await response.json();if(!response.ok)throw Error(body.error||'Connection check failed.');select.replaceChildren();const auto=document.createElement('option');auto.value='';auto.textContent='Automatic'+(body.selected?' ('+body.selected+')':'');select.append(auto);for(const model of body.models){const option=document.createElement('option');option.value=model;option.textContent=model;select.append(option);}restoreSelect('aimodel');status.textContent=body.message;}
  catch(error){status.textContent=error.name==='TimeoutError'?'Model discovery timed out. This check did not request an AI answer.':error.message;}
  finally{button.disabled=false;}
 });
@@ -134,22 +136,42 @@ function syncPropSelectors(body){
 }
 function renderProps(){
  const target=document.getElementById('proprows');if(!target)return;
- const query=document.getElementById('propsearch').value.toLowerCase(),groups=new Map();
- for(const r of propRows){if(![r.player,r.selection].join(' ').toLowerCase().includes(query))continue;const key=JSON.stringify([r.player,r.line,r.bookKey,r.marketKey]);if(!groups.has(key))groups.set(key,{...r,quotes:[]});groups.get(key).quotes.push(r);}
- target.innerHTML=[...groups.values()].map(r=>`<tr><td>${escape(r.player||r.selection)}<small>${escape(r.stat)} · ${escape(r.event)}${r.alternate?' · SPECIAL / ALTERNATE':''}</small></td><td>${escape(r.bookmaker)}<small>${r.indicative?'Indicative DFS prices':r.productType==='social'?'Social / settlement unverified':'Sportsbook prices'}</small></td><td>${escape(r.line)}</td><td>${r.quotes.filter(q=>q.selection.endsWith(' · Over')).map(q=>price(q)).join('')||'—'}</td><td>${r.quotes.filter(q=>q.selection.endsWith(' · Under')).map(q=>price(q)).join('')||'—'}</td></tr>`).join('')||'<tr><td colspan="5">Select an upcoming game and market, then load props. No demo prices are substituted.</td></tr>';
- document.getElementById('aiprops').disabled=!propRows.length||propContext?.sport!==document.getElementById('aisport').value;if(document.getElementById('aiprops').disabled)document.getElementById('aiprops').checked=false;document.getElementById('aipropcontext').textContent=propContext?'Include '+propContext.book+' '+propContext.sport+' '+(propRows[0]?.stat||'props')+' from '+(propRows[0]?.event||'selected event')+' (may use provider credits)':'Include loaded prop event / market (load matching-sport props first)';
+ const query=document.getElementById('propsearch').value.toLowerCase(),fresh=document.getElementById('propfresh').checked,gapsOnly=document.getElementById('propgaps').checked;
+ const filtered=propRows.filter(r=>[r.player,r.selection].join(' ').toLowerCase().includes(query));
+ const groups=propComparison(filtered,Date.now(),fresh).filter(g=>!gapsOnly||(g.gap!==null&&g.gap>0));
+ const books=[...new Map(groups.flatMap(g=>g.books.map(b=>[b.key,b.name]))).entries()];
+ const quotes=(rows,side)=>rows.filter(q=>q.selection.endsWith(' · '+side)).map(q=>price(q)).join('')||'—';
+ if(propView==='compare'){
+  document.getElementById('prophead').innerHTML='<tr><th>PLAYER / MARKET</th>'+books.map(([key,name])=>'<th>'+escape(name)+'</th>').join('')+'<th>LINE GAP</th></tr>';
+  target.innerHTML=groups.map(g=>`<tr><td>${escape(g.player)}<small>${escape(g.stat)} · ${escape(g.event)}${g.alternate?' · SPECIAL / ALTERNATE':''}</small></td>${books.map(([key])=>{const b=g.books.find(b=>b.key===key);return '<td>'+(b?b.lines.map(line=>'<div class="propcomparecell"><strong>'+escape(line)+'</strong><small>O '+quotes(b.quotes.filter(q=>q.line===line),'Over')+' U '+quotes(b.quotes.filter(q=>q.line===line),'Under')+'</small></div>').join(''):'—')+'</td>';}).join('')}<td>${g.gap===null?'Not comparable':g.gap.toFixed(1)}<small>Line difference, not value</small></td></tr>`).join('')||'<tr><td>No matching fresh comparison rows. Load multiple platforms or adjust filters.</td></tr>';
+ }else{
+  document.getElementById('prophead').innerHTML='<tr><th>PLAYER / MARKET</th><th>PLATFORM</th><th>LINE</th><th>OVER</th><th>UNDER</th></tr>';
+  target.innerHTML=groups.flatMap(g=>g.books.flatMap(b=>b.lines.map(line=>{const rows=b.quotes.filter(q=>q.line===line),r=rows[0];return `<tr><td>${escape(r.player||r.selection)}<small>${escape(r.stat)} · ${escape(r.event)}${r.alternate?' · SPECIAL / ALTERNATE':''}</small></td><td>${escape(r.bookmaker)}<small>${r.indicative?'Indicative DFS prices':'Sportsbook prices'}</small></td><td>${escape(line)}</td><td>${quotes(rows,'Over')}</td><td>${quotes(rows,'Under')}</td></tr>`;}))).join('')||'<tr><td colspan="5">No matching fresh props. Load a game / market or adjust filters.</td></tr>';
+ }
+ const sport=document.getElementById('sport').value,event=document.getElementById('propevent').value,market=document.getElementById('propmarket').value+(document.getElementById('propvariants').checked?'_alternate':'');
+ document.getElementById('propcoverage').innerHTML=[...propCoverage.values()].filter(c=>c.sport===sport&&c.event===event&&c.market===market).map(c=>'<span class="coverageitem"><b>'+escape(c.book)+'</b> · '+escape(c.state)+(c.count!==undefined?' · '+c.count+' quotes':'')+(c.fetchedAt?'<small>Fetched '+escape(new Date(c.fetchedAt).toLocaleTimeString())+'; quote times may be older</small>':'')+(c.error?'<small>'+escape(c.error)+'</small>':'')+'</span>').join('');
+ document.getElementById('aiprops').disabled=!propRows.length||!propContext||propContext.sport!==document.getElementById('aisport').value;if(document.getElementById('aiprops').disabled)document.getElementById('aiprops').checked=false;
+ const selected=propRows.find(q=>q.bookKey===propContext?.book);
+ document.getElementById('aipropcontext').textContent=propContext?'Include '+propContext.book+' '+propContext.sport+' '+(selected?.stat||'props')+' from '+(selected?.event||'selected event')+' (may use provider credits)':'Include loaded prop event / market (load matching-sport props first)';
 }
+
 document.addEventListener('click',event=>{const button=event.target.closest('[data-openprops]');if(!button)return;document.getElementById('propevent').value=button.dataset.openprops;document.querySelector('[data-tab=props]').click();});
 document.getElementById('propsearch').addEventListener('input',renderProps);
 for(const id of ['propevent','propmarket'])document.getElementById(id).addEventListener('change',()=>{++propRequestId;propRows=[];propContext=null;document.getElementById('aiprops').checked=false;renderProps();document.getElementById('propstatus').textContent='Selection changed. Load props for this event / market.';});
-document.getElementById('loadprops').addEventListener('click',async()=>{
- const id=++propRequestId,button=document.getElementById('loadprops'),status=document.getElementById('propstatus'),sport=document.getElementById('sport').value,event=document.getElementById('propevent').value,book=document.getElementById('propbook').value,market=document.getElementById('propmarket').value+(document.getElementById('propvariants').checked?'_alternate':'');
- if(!live||!event||!market){status.textContent='Load the live odds board and select an upcoming game first.';return;}
- const previousPropRows=propRows;button.disabled=true;status.textContent='Loading selected platform props…';propRows=[];propContext=null;renderProps();
- try{const response=await fetch('/api/props?'+new URLSearchParams({sport,event,market,book}),{signal:AbortSignal.timeout(35000)}),body=await response.json();if(id!==propRequestId)return;if(!response.ok)throw Error(body.error||'Props unavailable.');propRows=[...previousPropRows.filter(q=>q.eventId===event&&q.marketKey===market&&q.bookKey!==book),...body.rows];propContext={sport,event,market,book};status.textContent=body.rows.length?`${body.rows.length} quotes · ${body.stat} · fetched ${new Date(body.fetchedAt).toLocaleString()} · ${book} · cached 60 sec`:'No props returned for this platform / event / market. Coverage and release times vary.';renderProps();}
- catch(error){if(id===propRequestId)status.textContent=error.message;}
- finally{button.disabled=false;}
-});
+async function loadPlatforms(books){
+ const id=++propRequestId,status=document.getElementById('propstatus'),sport=document.getElementById('sport').value,event=document.getElementById('propevent').value,market=document.getElementById('propmarket').value+(document.getElementById('propvariants').checked?'_alternate':'');
+ if(!live||!event||!market){status.textContent='Load the live board and select an upcoming event first.';return;}
+ const buttons=['loadprops','loadcompare'].map(id=>document.getElementById(id));buttons.forEach(b=>b.disabled=true);status.textContent='Loading '+books.length+' platform request(s); uncached calls consume provider credits…';
+ for(const book of books)propCoverage.set([sport,event,market,book].join(':'),{sport,event,market,book,state:'Loading'});renderProps();
+ const results=await Promise.allSettled(books.map(async book=>{const response=await fetch('/api/props?'+new URLSearchParams({sport,event,market,book}),{signal:AbortSignal.timeout(35000)}),body=await response.json();if(!response.ok)throw Error(body.error||'Props unavailable');if(!Array.isArray(body.rows))throw Error('Invalid prop response');return {book,...body};}));
+ if(id!==propRequestId){buttons.forEach(b=>b.disabled=false);return;}
+ propRows=propRows.filter(q=>q.eventId===event&&q.marketKey===market&&!books.includes(q.bookKey));
+ for(let i=0;i<results.length;i++){const result=results[i],book=books[i];if(result.status==='fulfilled'){const body=result.value;propRows.push(...body.rows);propCoverage.set([sport,event,market,book].join(':'),{sport,event,market,book,state:body.rows.length?'Loaded':'No prices supplied',count:body.rows.length,fetchedAt:body.fetchedAt});}else propCoverage.set([sport,event,market,book].join(':'),{sport,event,market,book,state:'Failed',error:result.reason.message});}
+ const book=document.getElementById('propbook').value;propContext=propRows.some(q=>q.bookKey===book)?{sport,event,market,book}:null;
+ status.textContent=results.filter(r=>r.status==='fulfilled').length+'/'+books.length+' requests completed · '+propRows.length+' retained quotes. Line gaps are not profit estimates; entry terms differ.';renderProps();buttons.forEach(b=>b.disabled=false);
+}
+document.getElementById('loadprops').addEventListener('click',()=>loadPlatforms([document.getElementById('propbook').value]));
+document.getElementById('loadcompare').addEventListener('click',()=>loadPlatforms(document.getElementById('propvariants').checked?['underdog','prizepicks']:['draftkings','underdog','prizepicks']));
 
 function resetProps(){document.getElementById("propstatus").textContent="Select a live game and load props.";++propRequestId;propRows=[];propContext=null;document.getElementById("aiprops").checked=false;renderProps();}
 
@@ -176,3 +198,9 @@ document.getElementById("aianswer").addEventListener("click",event=>{const butto
 
 for(const id of ['propbook','propvariants'])document.getElementById(id).addEventListener('change',()=>{++propRequestId;document.getElementById('aiprops').checked=false;const book=document.getElementById('propbook').value;if(!['underdog','prizepicks'].includes(book))document.getElementById('propvariants').checked=false;document.getElementById('propstatus').textContent='Load the selected platform to add its prices. Existing rows retain their platform labels.';});
 document.getElementById('loadrebet').addEventListener('click',async()=>{const button=document.getElementById('loadrebet'),status=document.getElementById('boardmeta'),sport=document.getElementById('sport').value;if(!live||sport==='All sports'){status.textContent='Select a live sport first.';return;}button.disabled=true;try{const response=await fetch('/api/book?'+new URLSearchParams({sport,book:'rebet'}),{signal:AbortSignal.timeout(20000)}),body=await response.json();if(!response.ok)throw Error(body.error||'ReBet unavailable');if(sport!==document.getElementById('sport').value)return;liveRows=[...liveRows.filter(q=>q.bookKey!=='rebet'),...body.rows];document.getElementById('book').value='ReBet';render();renderCandidates();status.textContent+=body.rows.length?' · ReBet availability is user-reported; confirm current prices and settlement rules in the app.':' · No ReBet prices returned for this sport.';}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});
+
+for(const button of document.querySelectorAll('[data-propview]'))button.addEventListener('click',()=>{propView=button.dataset.propview;document.querySelectorAll('[data-propview]').forEach(b=>b.classList.toggle('selected',b===button));renderProps();});
+for(const id of ['propfresh','propgaps'])document.getElementById(id).addEventListener('change',renderProps);
+document.getElementById('propbook').addEventListener('change',()=>{const sport=document.getElementById('sport').value,event=document.getElementById('propevent').value,market=document.getElementById('propmarket').value+(document.getElementById('propvariants').checked?'_alternate':''),book=document.getElementById('propbook').value;propContext=propRows.some(q=>q.eventId===event&&q.marketKey===market&&q.bookKey===book)?{sport,event,market,book}:null;renderProps();});
+document.getElementById('notepickem').addEventListener('click',()=>{if(!selectedQuote)return;notePickemQuote(selectedQuote);document.getElementById('quotedetail').close();document.querySelector('[data-tab=pickem]').click();});
+setupPickem();setupWorkspace();loadOdds();

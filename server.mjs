@@ -17,7 +17,7 @@ const matchupResearch=async(body,onProgress)=>{
  return research({sport:body.sport,quotes,eventId:body.eventId,onProgress});
 };
 const researchJobs=createJobs(matchupResearch);
-const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/math.js':'math.js','/opportunities.js':'opportunities.js','/board.js':'board.js','/platforms.js':'platforms.js','/market.js':'market.js','/slip.js':'slip.js','/slip-math.js':'slip-math.js','/research-ui.js':'research-ui.js'};
+const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/math.js':'math.js','/opportunities.js':'opportunities.js','/board.js':'board.js','/platforms.js':'platforms.js','/market.js':'market.js','/prop-tools.js':'prop-tools.js','/pickem.js':'pickem.js','/workspace.js':'workspace.js','/slip.js':'slip.js','/slip-math.js':'slip-math.js','/research-ui.js':'research-ui.js'};
 const digest=value=>createHash('sha256').update(value).digest();
 http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
