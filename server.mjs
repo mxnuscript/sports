@@ -17,12 +17,12 @@ http.createServer(async(req,res)=>{
     const expected='Basic '+Buffer.from(user+':'+password).toString('base64');
     if(!timingSafeEqual(digest(req.headers.authorization||''),digest(expected))){res.writeHead(401,{'WWW-Authenticate':'Basic realm="Edge", charset="UTF-8"','Cache-Control':'no-store'});return res.end('Sign in to access Edge.');}
   }
-  if(url.pathname==='/api/ask'){
+  if(url.pathname==='/api/ask'||url.pathname==='/api/ai-check'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
     if(req.method!=='POST'){res.writeHead(405);return res.end(JSON.stringify({error:'POST required.'}));}
     if(req.headers.origin&&(!URL.canParse(req.headers.origin)||new URL(req.headers.origin).host!==req.headers.host)){res.writeHead(403);return res.end(JSON.stringify({error:'Use Ask AI from this app.'}));}
     if(!req.headers['content-type']?.startsWith('application/json')){res.writeHead(415);return res.end(JSON.stringify({error:'JSON required.'}));}
-    try{let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>12000){res.writeHead(413);return res.end(JSON.stringify({error:'Question too large.'}));}}let body;try{body=JSON.parse(raw);}catch{res.writeHead(400);return res.end(JSON.stringify({error:'Invalid JSON.'}));}res.end(JSON.stringify(await assistant(body)));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'AI request failed.'}));}return;
+    try{let raw='';for await(const chunk of req){raw+=chunk;if(Buffer.byteLength(raw)>12000){res.writeHead(413);return res.end(JSON.stringify({error:'Question too large.'}));}}let body;try{body=JSON.parse(raw);}catch{res.writeHead(400);return res.end(JSON.stringify({error:'Invalid JSON.'}));}res.end(JSON.stringify(await (url.pathname==='/api/ai-check'?assistant.check():assistant(body))));}catch(error){res.writeHead(error.status||502);res.end(JSON.stringify({error:error.status?error.message:'AI request failed.'}));}return;
   }
   if(url.pathname==='/api/odds'){
     res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');

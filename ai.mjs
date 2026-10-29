@@ -24,12 +24,12 @@ export async function providerError(response,provider,model,key){
  else reason='The provider rejected the request. Check account and model access.';
  return new FeedError(`${name} HTTP ${code}: ${reason}`,code===429?429:502);
 }
-export async function discoverGeminiModel(fetcher,key){
+export async function listGeminiModels(fetcher,key){
  const models=[],deadline=AbortSignal.timeout(8000);let token='';
  for(let page=0;page<5;page++){
   const url=new URL('https://generativelanguage.googleapis.com/v1beta/models');url.searchParams.set('pageSize','100');if(token)url.searchParams.set('pageToken',token);
   let response;try{response=await fetcher(url.toString(),{headers:{'x-goog-api-key':key},signal:deadline,redirect:'error'});}catch{throw new FeedError('Could not load the Gemini model catalog. Check network access and try again.');}
-  if(!response.ok)throw await providerError(response,'gemini','model catalog',key);
+  if(!response.ok){const error=await providerError(response,'gemini','model catalog',key);error.message='Model discovery: '+error.message;throw error;}
   let data;try{data=await response.json();}catch{throw new FeedError('Gemini returned an invalid model catalog.');}
   for(const model of data.models||[]){if(model.supportedGenerationMethods?.includes('generateContent')&&/^models\/gemini-[a-z0-9.-]+$/.test(model.name))models.push(model.name.slice(7));}
   token=data.nextPageToken;if(!token)break;
@@ -38,10 +38,12 @@ export async function discoverGeminiModel(fetcher,key){
  const stable=valid.filter(name=>/^gemini-[0-9.]+-flash$/.test(name));
  const lite=valid.filter(name=>/^gemini-[0-9.]+-flash-lite$/.test(name));
  const preview=valid.filter(name=>/^gemini-[0-9.]+-flash-preview(?:-[0-9-]+)?$/.test(name));
- const selected=[stable,lite,preview].find(group=>group.length)?.sort((a,b)=>b.localeCompare(a,undefined,{numeric:true}))[0];
- if(!selected)throw new FeedError('No supported Gemini Flash text model was listed for this key. Check Google AI Studio model access or set EDGE_AI_MODEL to a compatible available model.',503);
- return selected;
+ const choices=[stable,lite,preview].flatMap(group=>group.sort((a,b)=>b.localeCompare(a,undefined,{numeric:true})));
+ if(!choices.length)throw new FeedError('No supported Gemini Flash text model was listed for this key. Check Google AI Studio model access or set EDGE_AI_MODEL to a compatible available model.',503);
+ return choices;
 }
+export async function discoverGeminiModel(fetcher,key){return (await listGeminiModels(fetcher,key))[0];}
+
 export function eligibleQuotes(rows,now=Date.now()){
  return rows.filter(r=>r.bookKey==='draftkings'&&Number.isFinite(r.odds)&&Math.abs(r.odds)>=100&&['Moneyline','Spread','Total'].includes(r.market)&&Date.parse(r.start)>now&&now-Date.parse(r.updatedAt)>=-60000&&now-Date.parse(r.updatedAt)<=300000).slice(0,80).map((r,i)=>({...r,id:'q'+(i+1),breakEven:1/decimal(r.odds)}));
 }
@@ -56,8 +58,9 @@ export function validateAnswer(answer,quotes){
  return {...answer,bets,parlay:{...answer.parlay,legs,combinedDecimal,breakEven:combinedDecimal?1/combinedDecimal:null}};
 }
 export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fetch,now=Date.now,cooldown=15000,provider=()=>process.env.EDGE_AI_PROVIDER||'openai',modelName=()=>process.env.EDGE_AI_MODEL}={}){
- let busy=false,last=-Infinity,discoveredModel=null;
- return async body=>{
+ let busy=false,last=-Infinity,catalog=null,catalogTime=-Infinity;
+ const models=async(force=false)=>{if(force||!catalog||now()-catalogTime>120000){catalog=await listGeminiModels(fetcher,key());catalogTime=now();}return catalog;};
+ const ask=async body=>{
   if(!body||typeof body.message!=='string'||!body.message.trim()||body.message.length>2500||!Object.hasOwn(SPORTS,body.sport))throw new FeedError('Choose a sport and enter a question of 1–2500 characters.',400);
   const chosen=provider();
   if(!['openai','gemini'].includes(chosen))throw new FeedError('Set EDGE_AI_PROVIDER to openai or gemini on the server.',503);
@@ -67,7 +70,8 @@ export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fe
   try{
    const snapshot=await odds(body.sport),quotes=eligibleQuotes(snapshot.rows,now());
    if(!quotes.length)return {summary:'No fresh, pregame DraftKings quotes are available for this sport. No AI request was made.',bets:[],parlay:{legs:[]},limitations:'Try another sport or refresh later.',fetchedAt:snapshot.fetchedAt,analyzedAt:new Date(now()).toISOString(),model:null};
-   const model=modelName()||(chosen==='gemini'?(discoveredModel||=await discoverGeminiModel(fetcher,key())):'gpt-5-mini');
+   let model=modelName()||(chosen==='gemini'?(await models())[0]:'gpt-5-mini');
+   if(body.model){if(chosen!=='gemini'||typeof body.model!=='string'||!(await models()).includes(body.model))throw new FeedError('Choose a Gemini Flash model from Check connection / load models.',400);model=body.model;}
    if(!/^[a-zA-Z0-9._-]+$/.test(model))throw new FeedError('Invalid AI model configuration.',503);
    const input=JSON.stringify({question:body.message.trim(),sport:body.sport,snapshotFetchedAt:snapshot.fetchedAt,quotes});
    let response;
@@ -77,7 +81,7 @@ export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fe
     const request=chosen==='gemini'?{systemInstruction:{parts:[{text:instructions}]},contents:[{role:'user',parts:[{text:input}]}],generationConfig:{responseMimeType:'application/json',responseSchema:geminiSchema(schema),maxOutputTokens:8192}}:{model,store:false,instructions,input,reasoning:{effort:'low'},max_output_tokens:3000,text:{format:{type:'json_schema',name:'odds_research',strict:true,schema}}};
     response=await fetcher(url,{method:'POST',headers,body:JSON.stringify(request),signal:AbortSignal.timeout(45000),redirect:'error'});
    }catch{throw new FeedError('AI request timed out or could not connect. Check network access before retrying.');}
-   if(!response.ok)throw await providerError(response,chosen,model,key());
+   if(!response.ok){const error=await providerError(response,chosen,model,key());error.message='Answer generation ('+model+'): '+error.message;throw error;}
    let payload,answer;
    try{
     payload=await response.json();let text;
@@ -95,4 +99,11 @@ export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fe
    return {...result,fetchedAt:snapshot.fetchedAt,analyzedAt:new Date(now()).toISOString(),model,provider:chosen,quoteCount:quotes.length};
   }finally{busy=false;}
  };
+ ask.check=async()=>{
+  const chosen=provider();if(!key())throw new FeedError('No AI API key is configured. Restart the launcher and enter your provider key.',503);
+  if(chosen!=='gemini')return {provider:chosen,models:[],selected:modelName()||'gpt-5-mini',message:'OpenAI selected. No generation request was made; model access and quota were not tested.'};
+  const available=await models(true);
+  return {provider:chosen,models:available,selected:available.includes(modelName())?modelName():available[0],message:'Gemini model catalog is reachable with this key. No answer was generated or generation quota tested. If one model returns 503, choose another listed Flash model and ask again.'};
+ };
+ return ask;
 }
