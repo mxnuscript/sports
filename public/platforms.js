@@ -1,0 +1,7 @@
+export const platforms=[
+ {name:'DraftKings',type:'Sportsbook',status:'Confirmed Oregon provider',feed:'Live moneylines, spreads and totals connected',url:'https://www.oregonlottery.org/sports/',note:'Oregon Lottery provider page checked October 29, 2026. Account, location and market eligibility still apply.'},
+ {name:'Underdog',type:'Fantasy / pick’em products',status:'Oregon product eligibility unverified',feed:'No live pick’em integration',url:'https://help.underdogfantasy.com/',note:'Confirm the specific paid product in your Oregon account; sportsbook and fantasy access differ.'},
+ {name:'Betr',type:'Sportsbook / pick’em products',status:'Oregon product eligibility unverified',feed:'No live Betr integration',url:'https://help.betr.app/',note:'Confirm the exact product and current Oregon eligibility before adding a selection.'},
+ {name:'PrizePicks',type:'Fantasy / pick’em products',status:'Oregon product eligibility unverified',feed:'No live pick’em integration',url:'https://www.prizepicks.com/where-to-play',note:'Check current state rules and product availability directly with the operator.'},
+ {name:'FanDuel, BetMGM, Caesars, BetRivers',type:'Reference sportsbooks',status:'Not enabled for Oregon betting',feed:'Reference odds when supplied by the provider',url:'https://www.oregonlottery.org/sports/',note:'A price in the feed does not establish Oregon availability. Excluded from Oregon-mode opportunity scanning.'}
+];

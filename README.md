@@ -19,3 +19,13 @@ True value estimates require a calibrated probability model or justified market 
 ## Hosting and comparisons
 
 See [DEPLOY.md](DEPLOY.md) for the Render Blueprint, private sign-in, and deployment verification. The board defaults to DraftKings and can filter other available books. The arbitrage lab automatically scans loaded live data for candidates involving DraftKings. It excludes started events, stale or unsynchronized quotes, three-way markets, and integer spread/total lines. Candidates still require verification of sportsbook settlement rules, limits, rounding, and executable prices.
+
+## Oregon and the compact board
+
+The board combines each team's moneyline and spread on one row per event and sportsbook. Alternate spread lines are retained; totals and props stay separate. Oregon mode is the default and currently enables only DraftKings, confirmed on the Oregon Lottery sports page on October 29, 2026: https://www.oregonlottery.org/sports/. This is coverage verification, not an exhaustive legal review. Other supplied sportsbook prices remain visible in explicit reference mode and are not represented as executable from Oregon.
+
+The Oregon platforms tab tracks Underdog, Betr and PrizePicks as unverified product-specific eligibility, not connected live feeds. Their help pages could not be verified during this change. A manual pick’em watchlist records user-confirmed eligible selections in browser localStorage (maximum 100). It does not calculate arbitrage from pick’em selections, store account credentials, or invent prices. Check exact product, state eligibility, payouts, void rules and entry terms directly in your account. This directory is a starting point; it does not claim to enumerate every Oregon retail, tribal or fantasy offering.
+
+### Windows quick start / update
+
+Download the latest ZIP for `edge/live-odds-workspace` and extract it to a new folder. Stop the old app with Ctrl+C. Double-click `start-windows.cmd` in the folder containing package.json, enter your Odds API key when prompted, and open http://localhost:3000. Requires Node 24.5 or newer. The launcher keeps the key only in the process environment and avoids PowerShell's npm.ps1 execution-policy issue. It does not change execution policy or install dependencies. Existing browser watchlist notes remain on the same localhost port/browser. To update, download/extract the new ZIP; changes pushed to GitHub do not update an existing ZIP extraction automatically.

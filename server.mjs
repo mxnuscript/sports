@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {createFeed} from './odds.mjs';
 import {createHash,timingSafeEqual} from 'node:crypto';
 const odds=createFeed();
-const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/math.js':'math.js','/opportunities.js':'opportunities.js'};
+const files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/math.js':'math.js','/opportunities.js':'opportunities.js','/board.js':'board.js','/platforms.js':'platforms.js'};
 const digest=value=>createHash('sha256').update(value).digest();
 http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
