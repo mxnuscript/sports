@@ -45,7 +45,7 @@ export async function listGeminiModels(fetcher,key){
 export async function discoverGeminiModel(fetcher,key){return (await listGeminiModels(fetcher,key))[0];}
 
 export function eligibleQuotes(rows,now=Date.now()){
- return rows.filter(r=>r.bookKey==='draftkings'&&Number.isFinite(r.odds)&&Math.abs(r.odds)>=100&&['Moneyline','Spread','Total','Player prop'].includes(r.market)&&Date.parse(r.start)>now&&now-Date.parse(r.updatedAt)>=-60000&&now-Date.parse(r.updatedAt)<=300000).slice(0,80).map((r,i)=>({...r,id:'q'+(i+1),breakEven:1/decimal(r.odds)}));
+ return rows.filter(r=>r.bookKey==='draftkings'&&Number.isFinite(r.odds)&&Math.abs(r.odds)>=100&&['Moneyline','Spread','Total','Player prop'].includes(r.market)&&Date.parse(r.start)>now&&now-Date.parse(r.updatedAt)>=-60000&&now-Date.parse(r.updatedAt)<=300000).map((r,i)=>({...r,id:'q'+(i+1),breakEven:1/decimal(r.odds)}));
 }
 export function validateAnswer(answer,quotes){
  if(!answer||typeof answer.summary!=='string'||typeof answer.limitations!=='string'||!Array.isArray(answer.bets)||answer.bets.length>4||!answer.parlay||!Array.isArray(answer.parlay.quoteIds)||typeof answer.parlay.reason!=='string'||typeof answer.parlay.caveat!=='string')throw new FeedError('AI returned an unsupported answer. Try a more specific question.');
@@ -81,7 +81,7 @@ export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fe
    let model=modelName()||(chosen==='gemini'?(await models())[0]:'gpt-5-mini');
    if(body.model){if(chosen!=='gemini'||typeof body.model!=='string'||!(await models()).includes(body.model))throw new FeedError('Choose a Gemini Flash model from Check connection / load models.',400);model=body.model;}
    if(!/^[a-zA-Z0-9._-]+$/.test(model))throw new FeedError('Invalid AI model configuration.',503);
-   const input=JSON.stringify({question:body.message.trim(),sport:body.sport,snapshotFetchedAt:snapshot.fetchedAt,quotes,researchContext});
+   const input=JSON.stringify({question:body.message.trim(),sport:body.sport,snapshotFetchedAt:snapshot.fetchedAt,quotes,researchContext:researchContext?{...researchContext,sources:researchContext.sources?.filter(s=>s.kind!=='player identity'),matchups:researchContext.matchups.map(m=>({...m,teams:m.teams.map(t=>({...t,seasonStats:t.seasonStats?.slice(0,12)})),players:m.players?.map(p=>({...p,seasonStats:p.seasonStats?.map(s=>({...s,stats:s.stats.filter(v=>/points|rebounds|assists|minutes|yards|receptions|hits|bases|strikeouts|gamesPlayed|runs|average|era|innings|walks|touchdowns|attempts|completions|interceptions|steals|blocks|fieldGoal|threePoint|targets/i.test(v.name))})),recentGames:p.recentGames?.map(g=>({...g,stats:g.stats.filter(v=>/points|rebounds|assists|minutes|yards|receptions|hits|bases|strikeouts|runs|average|era|innings|walks|touchdowns|attempts|completions|interceptions|steals|blocks|fieldGoal|threePoint|targets/i.test(v.name))}))}))}))}:null});
    let response;
    try{
     const url=chosen==='gemini'?`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`:'https://api.openai.com/v1/responses';

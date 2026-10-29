@@ -6,9 +6,9 @@ export function normalize(events,sport){
   if(!Array.isArray(events))throw new FeedError('The odds provider returned an invalid response.');
   return events.flatMap(event=>(event.bookmakers||[]).filter(b=>BOOKS.includes(b.key)).flatMap(book=>(book.markets||[]).flatMap(market=>{
     const prop=PROP_MARKETS[sport]?.[market.key];
-    const label=prop?'Player prop':{h2h:'Moneyline',spreads:'Spread',totals:'Total'}[market.key];
+    const label=prop?'Player prop':{h2h:'Moneyline',spreads:'Spread',alternate_spreads:'Spread',totals:'Total',alternate_totals:'Total'}[market.key];
     if(!label)return [];
-    return (market.outcomes||[]).filter(o=>Number.isFinite(o.price)&&Math.abs(o.price)>=100).map(o=>({sport,event:`${event.away_team} vs ${event.home_team}`,eventId:event.id,start:event.commence_time,market:label,marketKey:market.key,stat:prop||null,player:o.description||null,selection:prop?`${o.description||'Unknown player'} · ${o.name}`:o.name,line:o.point??'—',odds:o.price,bookmaker:book.title||book.key,bookKey:book.key,outcomeCount:market.outcomes?.length,updatedAt:market.last_update||book.last_update||null}));
+    return (market.outcomes||[]).filter(o=>Number.isFinite(o.price)&&Math.abs(o.price)>=100).map(o=>({sport,event:`${event.away_team} vs ${event.home_team}`,eventId:event.id,start:event.commence_time,market:label,marketKey:market.key.replace('alternate_',''),alternate:market.key.startsWith('alternate_'),stat:prop||null,player:o.description||null,selection:prop?`${o.description||'Unknown player'} · ${o.name}`:o.name,line:o.point??'—',odds:o.price,bookmaker:book.title||book.key,bookKey:book.key,outcomeCount:market.key.startsWith('alternate_')?2:market.outcomes?.length,updatedAt:market.last_update||book.last_update||null}));
   })));
 }
 export function createFeed({key=()=>process.env.ODDS_API_KEY,fetcher=fetch,now=Date.now}={}){
@@ -30,8 +30,9 @@ export function createFeed({key=()=>process.env.ODDS_API_KEY,fetcher=fetch,now=D
     pending.set(sport,request);try{return await request;}finally{pending.delete(sport);}
   };
   const propCache=new Map(),propPending=new Map();
+  feed.alternates=(sport,event)=>feed.props(sport,event,'alternate_spreads,alternate_totals');
   feed.props=async(sport,event,market)=>{
-    if(!Object.hasOwn(PROP_MARKETS,sport)||!Object.hasOwn(PROP_MARKETS[sport],market)||typeof event!=='string'||!/^[a-f0-9]{32}$/.test(event))throw new FeedError('Select a valid sport, event and prop market.',400);
+    if(!Object.hasOwn(PROP_MARKETS,sport)||!(Object.hasOwn(PROP_MARKETS[sport],market)||market==='alternate_spreads,alternate_totals')||typeof event!=='string'||!/^[a-f0-9]{32}$/.test(event))throw new FeedError('Select a valid sport, event and prop market.',400);
     if(!key())throw new FeedError('Configure ODDS_API_KEY to load player props.',503);
     const cacheKey=[sport,event,market].join(':'),hit=propCache.get(cacheKey);if(hit&&now()-hit.time<60000)return hit.value;if(propPending.has(cacheKey))return propPending.get(cacheKey);
     const task=(async()=>{
@@ -43,7 +44,7 @@ export function createFeed({key=()=>process.env.ODDS_API_KEY,fetcher=fetch,now=D
       if(!response.ok)throw new FeedError(response.status===401||response.status===403?'Your odds plan or key does not allow these player props.':response.status===422?'This prop market is unsupported for the selected event.':response.status===429?'Player prop quota or rate limit reached.':`Player prop feed returned HTTP ${response.status}.`,response.status===429?429:502);
       let eventData;try{eventData=await response.json();}catch{throw new FeedError('Player prop provider returned invalid JSON.');}
       if(!eventData||eventData.id!==event||!Array.isArray(eventData.bookmakers))throw new FeedError('Player prop provider returned an unexpected event.');
-      const value={rows:normalize([eventData],sport),fetchedAt:new Date(now()).toISOString(),market,stat:PROP_MARKETS[sport][market],event:selected,remaining:response.headers.get('x-requests-remaining')};
+      const value={rows:normalize([eventData],sport),fetchedAt:new Date(now()).toISOString(),market,stat:PROP_MARKETS[sport][market]||'Alternate spreads and totals',event:selected,remaining:response.headers.get('x-requests-remaining')};
       propCache.set(cacheKey,{time:now(),value});if(propCache.size>50)propCache.delete(propCache.keys().next().value);return value;
     })();propPending.set(cacheKey,task);try{return await task;}finally{propPending.delete(cacheKey);}
   };
