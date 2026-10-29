@@ -1,3 +1,4 @@
+import {researchHTML,setupResearch,setResearchEvents} from './research-ui.js';
 import {matrix,quoteKey,roundedAllocation,csv} from './market.js';
 import {compactRows,gameRows,regionRows} from './board.js';
 import {platforms} from './platforms.js';
@@ -102,11 +103,12 @@ document.getElementById('autorefresh').addEventListener('change',event=>{clearIn
 for(const button of document.querySelectorAll('[data-prompt]'))button.addEventListener('click',()=>{document.getElementById('aiquestion').value=button.dataset.prompt;document.getElementById('aiquestion').focus();});
 document.getElementById('askform').addEventListener('submit',async event=>{
  event.preventDefault();const button=document.getElementById('askbutton'),status=document.getElementById('aistatus'),answer=document.getElementById('aianswer');
- button.disabled=true;answer.replaceChildren();status.textContent='Checking fresh Oregon-eligible quotes and asking AI…';
+ button.disabled=true;answer.replaceChildren();status.textContent='Loading odds, sourced research and AI analysis…';
  try{
-  const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:document.getElementById('aiquestion').value,sport:document.getElementById('aisport').value,model:document.getElementById('aimodel').value,...(document.getElementById('aiprops').checked&&propContext?{propEvent:propContext.event,propMarket:propContext.market}:{})}),signal:AbortSignal.timeout(80000)}),body=await response.json();
+  const response=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:document.getElementById('aiquestion').value,sport:document.getElementById('aisport').value,model:document.getElementById('aimodel').value,research:document.getElementById('airesearch').checked,researchEvent:document.getElementById('researchgame').value,...(document.getElementById('aiprops').checked&&propContext?{propEvent:propContext.event,propMarket:propContext.market}:{})}),signal:AbortSignal.timeout(120000)}),body=await response.json();
   if(!response.ok)throw Error(body.error||'AI request failed.');
   status.textContent=body.model?'AI research generated '+new Date(body.analyzedAt).toLocaleString()+' · '+body.quoteCount+' quotes considered · '+body.model:'No AI request made.';
+  if(body.research)document.getElementById('researchpreview').innerHTML=researchHTML(body.research);
   const quote=r=>`<strong>${escape(r.selection)} · ${escape(r.market)} ${escape(r.stat||'')} ${escape(r.line)}</strong><p>${escape(r.event)} · DraftKings · ${r.odds>0?'+':''}${r.odds}</p><small>Break-even ${pct(r.breakEven)} · updated ${escape(new Date(r.updatedAt).toLocaleString())}</small>`;
   answer.innerHTML=`<article><h3>Research summary</h3><p class="aitext">${escape(body.summary)}</p><p class="fine">No verified positive EV. These are research ideas, not assured-profit recommendations.</p></article>`+(body.bets||[]).map(b=>`<article>${quote(b.quote)}<p class="aitext">${escape(b.reason)}</p><p class="fine aitext">${escape(b.caveat)}</p></article>`).join('')+(body.parlay?.legs?.length?`<article><h3>Illustrative parlay · not a sportsbook quote</h3>${body.parlay.legs.map(quote).join('<hr>')}<p><b>Multiplied decimal payout: ${body.parlay.combinedDecimal.toFixed(3)}×</b> including stake · break-even ${pct(body.parlay.breakEven)}</p><p>Illustration: a $10 stake returns ${money(body.parlay.combinedDecimal*10)} if all legs win, or loses $10 if a leg loses, before void rules. This multiplication does not account for sportsbook restrictions or correlation.</p><p class="aitext">${escape(body.parlay.reason)}</p><p class="fine aitext">${escape(body.parlay.caveat)}</p></article>`:'')+`<article><h3>What is missing</h3><p class="aitext">${escape(body.limitations)}</p><p class="fine">Snapshot fetched ${escape(new Date(body.fetchedAt).toLocaleString())}. Prices can change. Recheck in DraftKings before making any decision.</p></article>`;
  }catch(error){status.textContent=error.name==='TimeoutError'?'The request timed out. A provider request may still have been billed; wait before retrying.':error.message;}
@@ -125,6 +127,7 @@ function syncPropSelectors(body){
  select.replaceChildren();for(const event of body.events||[]){if(Date.parse(event.start)<=Date.now())continue;const option=document.createElement('option');option.value=event.id;option.textContent=event.label;select.append(option);}if([...select.options].some(o=>o.value===old))select.value=old;
  markets.replaceChildren();for(const [key,label] of Object.entries(body.propMarkets||{})){const option=document.createElement('option');option.value=key;option.textContent=label;markets.append(option);}
  if([...markets.options].some(o=>o.value===oldMarket))markets.value=oldMarket;
+ setResearchEvents(body.events||[],sport);
  if(propContext?.sport!==sport){propRows=[];propContext=null;document.getElementById('aiprops').checked=false;}renderProps();
 }
 function renderProps(){
@@ -151,3 +154,5 @@ function resetProps(){document.getElementById("propstatus").textContent="Select 
 document.getElementById("market").addEventListener("input",event=>{if(event.target.value==="Player prop"){event.target.value="All markets";render();document.querySelector("[data-tab=props]").click();}});
 
 document.getElementById("aisport").addEventListener("change",renderProps);
+
+setupResearch(()=>document.getElementById("aiprops").checked&&propContext?.sport===document.getElementById("aisport").value?{propEvent:propContext.event,propMarket:propContext.market}:{});
