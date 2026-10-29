@@ -15,26 +15,44 @@ export function validateAnswer(answer,quotes){
  const legs=ids.map(id=>byId.get(id)),combinedDecimal=legs.length?legs.reduce((n,r)=>n*decimal(r.odds),1):null;
  return {...answer,bets,parlay:{...answer.parlay,legs,combinedDecimal,breakEven:combinedDecimal?1/combinedDecimal:null}};
 }
-export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fetch,now=Date.now,cooldown=15000}={}){
+export function createAssistant({odds,key=()=>process.env.EDGE_AI_KEY,fetcher=fetch,now=Date.now,cooldown=15000,provider=()=>process.env.EDGE_AI_PROVIDER||'openai',modelName=()=>process.env.EDGE_AI_MODEL}={}){
  let busy=false,last=-Infinity;
  return async body=>{
   if(!body||typeof body.message!=='string'||!body.message.trim()||body.message.length>2500||!Object.hasOwn(SPORTS,body.sport))throw new FeedError('Choose a sport and enter a question of 1–2500 characters.',400);
-  if(!key())throw new FeedError('Ask AI needs an OpenAI API key configured as EDGE_AI_KEY on the server. API usage is billed separately from ChatGPT.',503);
+  const chosen=provider();
+  if(!['openai','gemini'].includes(chosen))throw new FeedError('Set EDGE_AI_PROVIDER to openai or gemini on the server.',503);
+  if(!key())throw new FeedError('Ask AI needs an '+(chosen==='gemini'?'Google AI Studio':'OpenAI')+' API key configured as EDGE_AI_KEY on the server. Provider quotas and billing apply.',503);
   if(busy||now()-last<cooldown)throw new FeedError('Please wait 15 seconds between AI requests.',429);
   busy=true;last=now();
   try{
    const snapshot=await odds(body.sport),quotes=eligibleQuotes(snapshot.rows,now());
    if(!quotes.length)return {summary:'No fresh, pregame DraftKings quotes are available for this sport. No AI request was made.',bets:[],parlay:{legs:[]},limitations:'Try another sport or refresh later.',fetchedAt:snapshot.fetchedAt,analyzedAt:new Date(now()).toISOString(),model:null};
-   const model='gpt-5-mini';
+   const model=modelName()||(chosen==='gemini'?'gemini-2.5-flash':'gpt-5-mini');
+   if(!/^[a-zA-Z0-9._-]+$/.test(model))throw new FeedError('Invalid AI model configuration.',503);
+   const input=JSON.stringify({question:body.message.trim(),sport:body.sport,snapshotFetchedAt:snapshot.fetchedAt,quotes});
    let response;
-   try{response=await fetcher('https://api.openai.com/v1/responses',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+key()},body:JSON.stringify({model,store:false,instructions,input:JSON.stringify({question:body.message.trim(),sport:body.sport,snapshotFetchedAt:snapshot.fetchedAt,quotes}),reasoning:{effort:'low'},max_output_tokens:3000,text:{format:{type:'json_schema',name:'odds_research',strict:true,schema}}}),signal:AbortSignal.timeout(45000),redirect:'error'});}catch{throw new FeedError('AI request timed out or could not connect. Check network access before retrying.');}
+   try{
+    const url=chosen==='gemini'?`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`:'https://api.openai.com/v1/responses';
+    const headers=chosen==='gemini'?{'Content-Type':'application/json','x-goog-api-key':key()}:{'Content-Type':'application/json',Authorization:'Bearer '+key()};
+    const request=chosen==='gemini'?{systemInstruction:{parts:[{text:instructions}]},contents:[{role:'user',parts:[{text:input}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema,maxOutputTokens:8192}}:{model,store:false,instructions,input,reasoning:{effort:'low'},max_output_tokens:3000,text:{format:{type:'json_schema',name:'odds_research',strict:true,schema}}};
+    response=await fetcher(url,{method:'POST',headers,body:JSON.stringify(request),signal:AbortSignal.timeout(45000),redirect:'error'});
+   }catch{throw new FeedError('AI request timed out or could not connect. Check network access before retrying.');}
    if(!response.ok)throw new FeedError(response.status===401||response.status===403?'AI provider rejected the API key or model access.':response.status===429?'AI quota or rate limit reached. Check your API billing and limits.':'AI provider is unavailable.',response.status===429?429:502);
    let payload,answer;
-   try{payload=await response.json();if(payload.status!=='completed')throw Error();const text=(payload.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');answer=JSON.parse(text);}catch{throw new FeedError('AI did not complete a valid answer. No recommendations are shown.');}
+   try{
+    payload=await response.json();let text;
+    if(chosen==='gemini'){
+     const candidate=payload.candidates?.[0];if(candidate?.finishReason!=='STOP')throw Error();
+     text=(candidate.content?.parts||[]).filter(p=>!p.thought&&typeof p.text==='string').map(p=>p.text).join('');
+    }else{
+     if(payload.status!=='completed')throw Error();text=(payload.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('');
+    }
+    answer=JSON.parse(text);
+   }catch{throw new FeedError('AI did not complete a valid answer. No recommendations are shown.');}
    const result=validateAnswer(answer,quotes);
    const used=[...result.bets.map(b=>b.quote),...result.parlay.legs];
    if(eligibleQuotes(used,now()).length!==used.length)throw new FeedError('Selected prices expired while AI was answering. Refresh and ask again.');
-   return {...result,fetchedAt:snapshot.fetchedAt,analyzedAt:new Date(now()).toISOString(),model,quoteCount:quotes.length};
+   return {...result,fetchedAt:snapshot.fetchedAt,analyzedAt:new Date(now()).toISOString(),model,provider:chosen,quoteCount:quotes.length};
   }finally{busy=false;}
  };
 }

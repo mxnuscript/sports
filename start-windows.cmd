@@ -9,5 +9,5 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-powershell.exe -NoProfile -Command "if (-not $env:ODDS_API_KEY) { $key = Read-Host 'Enter your Odds API key' -AsSecureString; $env:ODDS_API_KEY = [System.Net.NetworkCredential]::new('', $key).Password }; if (-not $env:EDGE_AI_KEY) { $ai = Read-Host 'Optional OpenAI API key for Ask AI (Enter to skip)' -AsSecureString; if ($ai.Length -gt 0) { $env:EDGE_AI_KEY = [System.Net.NetworkCredential]::new('', $ai).Password } }; & node --use-env-proxy server.mjs; exit $LASTEXITCODE"
+powershell.exe -NoProfile -Command "if (-not $env:ODDS_API_KEY) { $key = Read-Host 'Enter your Odds API key' -AsSecureString; $env:ODDS_API_KEY = [System.Net.NetworkCredential]::new('', $key).Password }; if (-not $env:EDGE_AI_KEY) { $provider = Read-Host 'Ask AI provider: G for Google AI Studio, O for OpenAI, Enter to skip'; if ($provider -match '^[gGoO]$') { if ($provider -match '^[gG]$') { $env:EDGE_AI_PROVIDER = 'gemini' } else { $env:EDGE_AI_PROVIDER = 'openai' }; $ai = Read-Host 'Enter API key for the selected AI provider' -AsSecureString; if ($ai.Length -gt 0) { $env:EDGE_AI_KEY = [System.Net.NetworkCredential]::new('', $ai).Password } } }; & node --use-env-proxy server.mjs; exit $LASTEXITCODE"
 pause
